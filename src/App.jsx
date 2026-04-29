@@ -652,21 +652,48 @@ function TabReporte({ grades, students, activities, scores }) {
   CAT_KEYS.forEach(c => { actsByCat[c] = acts.filter(a => a.category === c); });
 
   const exportReport = () => {
-    const rows = studentStats.map(s => {
+    // Sheet 1: one column per activity (name + date + category)
+    const detailRows = studentStats.map(s => {
       const row = { "Estudiante": s.name, "Grado": grade };
+      // Individual activities grouped by category
       CAT_KEYS.forEach(c => {
-        row[`${CATEGORIES[c].label} (${(CATEGORIES[c].weight*100).toFixed(0)}%)`] = s.ca[c] !== null ? fmt(s.ca[c]) : "Sin notas";
+        const catActs = acts.filter(a => a.category === c);
+        catActs.forEach(a => {
+          const colName = `[${CATEGORIES[c].short}] ${a.name} (${a.date})`;
+          const v = scores[`${a.id}||${s.id}`];
+          row[colName] = (v !== undefined && v !== "") ? Number(v) : "";
+        });
+        // Category average
+        row[`Prom. ${CATEGORIES[c].label} (${(CATEGORIES[c].weight*100).toFixed(0)}%)`] = s.ca[c] !== null ? parseFloat(fmt(s.ca[c])) : "";
       });
-      row["Promedio Final"] = fmt(s.wav);
-      row["Nivel"]    = s.wav !== null ? getRange(s.wav)?.label : "—";
-      row["Pre-Informe"] = fmt(s.pre);
-      row["Alerta Pre-Inf"] = (s.pre !== null && s.pre < 3.5) ? "⚠️ Bajo" : "";
+      row["Promedio Final Ponderado"] = s.wav !== null ? parseFloat(fmt(s.wav)) : "";
+      row["Nivel"]        = s.wav !== null ? getRange(s.wav)?.label : "—";
+      row["Pre-Informe"]  = s.pre !== null ? parseFloat(fmt(s.pre)) : "";
+      row["Estado Pre-Inf"] = (s.pre !== null && s.pre < 3.5) ? "⚠️ Bajo 3.5" : (s.pre !== null ? "✅ OK" : "Sin datos");
+      row["Notas < 3"]    = s.lowScores.length > 0 ? s.lowScores.length : "";
       return row;
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const ws1 = XLSX.utils.json_to_sheet(detailRows);
+
+    // Sheet 2: summary only
+    const summaryRows = studentStats.map(s => {
+      const row = { "Estudiante": s.name, "Grado": grade };
+      CAT_KEYS.forEach(c => {
+        row[`${CATEGORIES[c].label} (${(CATEGORIES[c].weight*100).toFixed(0)}%)`] = s.ca[c] !== null ? parseFloat(fmt(s.ca[c])) : "";
+      });
+      row["Promedio Final"] = s.wav !== null ? parseFloat(fmt(s.wav)) : "";
+      row["Nivel"]          = s.wav !== null ? getRange(s.wav)?.label : "—";
+      row["Pre-Informe"]    = s.pre !== null ? parseFloat(fmt(s.pre)) : "";
+      row["Alerta"]         = (s.pre !== null && s.pre < 3.5) ? "⚠️ Bajo" : "";
+      return row;
+    });
+    const ws2 = XLSX.utils.json_to_sheet(summaryRows);
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Reporte");
-    XLSX.writeFile(wb, `reporte_${grade.replace(/[°\s]/g,"")}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws1, "Detalle por Actividad");
+    XLSX.utils.book_append_sheet(wb, ws2, "Resumen por Categoría");
+    XLSX.writeFile(wb, `reporte_${grade.replace(/[°\s]/g,"")}_${TODAY}.xlsx`);
   };
 
   return (
